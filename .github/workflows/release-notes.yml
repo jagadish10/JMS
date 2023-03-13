@@ -108,7 +108,7 @@ jobs:
         
     - name: Update Release HTML
       run: python .github/scripts/release.py
-        
+
     - uses: cupcakearmy/confluence-markdown-sync@v1
       with:
         from: '.github/workflows/release-notes.html'
