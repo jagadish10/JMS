@@ -1,0 +1,119 @@
+name: release-notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Please provide the confluence url here
+        required: true
+
+jobs:
+  Release:
+    runs-on: ubuntu-latest
+
+    env:
+      PAGE_ID: 3001581585
+      user: 'dharmveer.baiger@taylorandfrancis.com'
+      token: ${{ secrets.UPLOAD_FILE }}
+      baseUrl: 'https://taylorfrancis.atlassian.net/wiki'
+      APPLICATION_NAME: 'Journal Meta Service'
+      CLASS_NAME: 'JMS'
+      NEW_TABLE: ""
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+
+    - name: Extract the page id from url
+      run: |
+        number=$(echo "${{github.event.inputs.url}}" | grep -oE '/[0-9]+/')
+        echo "PAGE_ID=$(echo "$number" | tr -d '/')" >> $GITHUB_ENV
+
+    - name: Install Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14.x'
+
+    - name: Retrieve existing confluence Page data to File
+      run: |
+        npm install confluence-api
+        node -e "
+          const ConfluenceAPI = require('confluence-api');
+          const fs = require('fs');
+          const client = new ConfluenceAPI({
+              username: process.env.user,
+              password: process.env.token,
+              baseUrl: process.env.baseUrl
+          });
+          client.getContentById(process.env.PAGE_ID, function(err, data) {
+              const filePath = '.github/workflows/release-notes.html';
+              fs.writeFile(filePath, data.body.storage.value, (err) => {
+                if (err)
+                  console.log(err)
+                else {
+                  console.log(data.body.storage.value);
+                }
+              })
+          });
+        "
+
+    - name: Get Commits
+      run: |
+        COMMITS=$(git log  $(git describe --match "PROD.*" --tags --abbrev=0)..HEAD --oneline)
+        allTickets=()
+        # echo "Committsssss--------------------------- $COMMITS" 
+        for i in $COMMITS; do 
+            ticketidpattern="([A-Z]{2,6})-([0-9]{1,5})"  
+            if [[ $i =~ $ticketidpattern ]]; then
+              allTickets+=("$i")
+            fi
+        done 
+        # echo "all tickets:-  ${allTickets[@]}"
+        uniqueTickets=($(echo "${allTickets[@]}" | tr ' ' '\n' | sort -u))
+        # echo "unique tickets:-  ${uniqueTickets[@]}"
+        tableData="<div class=${{env.CLASS_NAME}}>"
+        tableData+="<h2>${{env.APPLICATION_NAME}}</h2>"
+        tableData+="<table>"
+        tableData+="<thead>"
+        tableData+="<tr>"
+        tableData+="<th>Ticket Number</th>"
+        tableData+="<th>Link</th>"
+        tableData+="</tr>"
+        tableData+="</thead>"
+        tableData+="<tbody>"
+        for id in "${uniqueTickets[@]}"
+        do
+          tableData+="<tr>"
+          tableData+="<td> $id </td>"
+          tableData+="<td> <a href=https://taylorfrancis.atlassian.net/browse/$id>https://taylorfrancis.atlassian.net/browse/$id</a> </td>"
+          tableData+="</tr>"
+        done
+        tableData+="</tbody>"
+        tableData+="</table>"
+        tableData+="</div>"
+        echo "NEW_TABLE=$tableData" >> $GITHUB_ENV
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install beautifulsoup4
+        
+    - name: Update Release HTML
+      run: python .github/scripts/release.py
+        
+    - uses: cupcakearmy/confluence-markdown-sync@v1
+      with:
+        from: '.github/workflows/release-notes.html'
+        to: ${{env.PAGE_ID}}
+        cloud: 'taylorfrancis'
+        user: 'dharmveer.baiger@taylorandfrancis.com'
+        token: ${{ secrets.UPLOAD_FILE }}
+
