@@ -70,7 +70,7 @@ jobs:
             if [[ $i =~ $ticketidpattern ]]; then
               allTickets+=("$i")
             fi
-        done 
+        done
         # echo "all tickets:-  ${allTickets[@]}"
         uniqueTickets=($(echo "${allTickets[@]}" | tr ' ' '\n' | sort -u))
         # echo "unique tickets:-  ${uniqueTickets[@]}"
